@@ -36,7 +36,7 @@ def check_password():
                 st.error("PIN Salah! Akses Ditolak.")
     return False
 
-if not check_password():
+if not APP_PASSWORD():
     st.stop()
 try:
     FRED_API_KEY = st.secrets["FRED_API_KEY"]
