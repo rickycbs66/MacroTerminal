@@ -18,6 +18,7 @@ div[data-testid="stMetricValue"] { color: #00FF00 !important; }
 h1,h2,h3 {color:#00FF00 !important;}
 </style>
 """, unsafe_allow_html=True)
+
 def check_password():
     if "password_correct" not in st.session_state:
         st.session_state["password_correct"] = False
@@ -36,7 +37,7 @@ def check_password():
                 st.error("PIN Salah! Akses Ditolak.")
     return False
 
-if not APP_PASSWORD():
+if not check_password():
     st.stop()
 try:
     FRED_API_KEY = st.secrets["FRED_API_KEY"]
