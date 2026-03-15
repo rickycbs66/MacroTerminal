@@ -98,7 +98,7 @@ for i, region in enumerate(regions):
         st.markdown(f"### {region}")
         data_rows = []
         for name, ticker, threshold in global_macro[region]:
-            val = get_macro_val(ticker, name)
+            val = get_macro_val_smart(ticker, name)
             if "CPI" in name or "Inflation" in name:
                 status = "🔴 HOT" if val > threshold else "🟢 TARGET"
             elif "Sentiment" in name or "GDP" in name:
