@@ -11,9 +11,7 @@ st.markdown("""
 <style>
 .stApp { background-color: #000000; color: #00FF00; font-family: 'Courier New'; }
 h1,h2,h3 {color:#00FF00 !important;}
-div[data-testid="stMetricValue"] { color: #00FF00 !important; }
 table { color: #00FF00 !important; background-color: #111 !important; border: 1px solid #333 !important; }
-input { background-color: #111 !important; color: #00FF00 !important; border: 1px solid #00FF00 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -45,29 +43,30 @@ try:
 except:
     st.error("API Key FRED tidak ditemukan di Secrets!")
     st.stop()
-# 4. MODEL DATA
-global_macro = {
+
+# 4. MODEL DATA (DIPERBAIKI: DITAMBAH KOLOM DTYPE)
+global_macro_config = {
     "🇬🇧 UNITED KINGDOM (GBP)": [
-        ["UK CPI Inflation YoY", "GBRCPIALLMINMEI", 2.0],
-        ["UK Core CPI YoY", "GBRCPICOREMINMEI", 2.0],
-        ["UK Unemployment Rate", "LRUNTTTTGBM156S", 4.4],
-        ["UK 10Y Gilt Yield", "IRLTLT01GBM156N", 4.0]
+        ["UK CPI Inflation YoY", "GBRCPIALLMINMEI", 2.0, "yoy"],
+        ["UK Core CPI YoY", "GBRCPICOREMINMEI", 2.0, "yoy"],
+        ["UK Unemployment Rate", "LRUNTTTTGBM156S", 4.4, "raw"],
+        ["UK 10Y Gilt Yield", "IRLTLT01GBM156N", 4.0, "raw"]
     ],
     "🇪🇺 EUROZONE (EUR)": [
-        ["Eurozone HICP Inflation", "CPHPTT01EZM659N", 2.0],
-        ["German ZEW Sentiment", "DEUSNT01ATM664N", 0.0],
-        ["Eurozone GDP Growth", "CLVMNACSCAB1GQEZ", 0.5],
-        ["DAX 40 Index", "^GDAXI", 15000]
+        ["Eurozone HICP Inflation", "CPHPTT01EZM659N", 2.0, "yoy"],
+        ["German ZEW Sentiment", "DEUSNT01ATM664N", 0.0, "raw"],
+        ["Eurozone GDP Growth", "CLVMNACSCAB1GQEZ", 0.5, "yoy_q"],
+        ["DAX 40 Index", "^GDAXI", 15000, "yf"]
     ],
     "🇯🇵 JAPAN (JPY)": [
-        ["Japan Core CPI YoY", "JPNCPIALLMINMEI", 2.0],
-        ["Japan 10Y JGB Yield", "IRLTLT01JPM156N", 0.8],
-        ["Japan GDP Growth", "JPNGDPNQDSMEI", 0.2],
-        ["Nikkei 225 Index", "^N225", 35000]
+        ["Japan Core CPI YoY", "JPNCPIALLMINMEI", 2.0, "yoy"],
+        ["Japan 10Y JGB Yield", "IRLTLT01JPM156N", 0.8, "raw"],
+        ["Japan GDP Growth", "JPNGDPNQDSMEI", 0.2, "yoy_q"],
+        ["Nikkei 225 Index", "^N225", 35000, "yf"]
     ]
 }
 
-# 5. LOGIKA DATA PROCESSING 
+# 5. LOGIKA DATA PROCESSING
 @st.cache_data(ttl=3600)
 def process_macro():
     all_results = []
@@ -90,7 +89,6 @@ def process_macro():
             except:
                 val = 0.0
             
-            # Penentuan Status
             if "CPI" in name or "Inflation" in name:
                 status = "🔴 HOT" if val > threshold else "🟢 TARGET"
             elif "Yield" in name:
@@ -100,8 +98,9 @@ def process_macro():
             
             all_results.append([region, name, val, threshold, status])
     return pd.DataFrame(all_results, columns=["Region", "Indicator", "Value", "Threshold", "Status"])
+
 # 6. TAMPILAN DASHBOARD
-st.title(" GLOBAL FX STRATEGIC MONITOR (MARCH 2026)")
+st.title("🌏 GLOBAL FX STRATEGIC MONITOR (MARCH 2026)")
 df_results = process_macro()
 
 cols = st.columns(3)
@@ -109,24 +108,29 @@ regions = list(global_macro_config.keys())
 for i, region in enumerate(regions):
     with cols[i]:
         st.markdown(f"### {region}")
-        region_data = df_results[df_results['Category'] == region][['Indicator', 'Value', 'Status']]
+        # PERBAIKAN: Nama kolom harus sesuai dengan df_results yaitu 'Region'
+        region_data = df_results[df_results['Region'] == region][['Indicator', 'Value', 'Status']]
         st.table(region_data)
-# 7. BIAS FX (LOGIKA OTOMATIS BERDASARKAN DATA)
+
+# 7. BIAS FX
 st.divider()
-st.subheader(" Global FX Strategic Bias")
+st.subheader("💡 Global FX Strategic Bias")
+
 def get_val(indicator_name):
     filt = df_results[df_results['Indicator'] == indicator_name]['Value']
-    return filt.values[0] if not filt.empty else 0.0
+    return float(filt.iloc[0]) if not filt.empty else 0.0
+
 uk_inf = get_val("UK CPI Inflation YoY")
 eu_inf = get_val("Eurozone HICP Inflation")
 jp_yld = get_val("Japan 10Y JGB Yield")
+
 b1, b2, b3 = st.columns(3)
 with b1:
-    st.error(f"**GBP Bias:** {'🔴 HAWKISH' if uk_inf > 2.5 else '🟢 NEUTRAL'}\n\nInflasi UK {uk_inf}% (Target 2%). GBP Strong.")
+    st.error(f"**GBP Bias:** {'🔴 HAWKISH' if uk_inf > 2.5 else '🟢 NEUTRAL'}\n\nInflasi UK {uk_inf}% (Target 2.0%). GBP Strong.")
 with b2:
     st.info(f"**EUR Bias:** {'🟡 STABLE' if eu_inf < 2.5 else '🔴 HOT'}\n\nInflasi EU {eu_inf}%. Pantau ECB.")
 with b3:
-    st.success(f"**JPY Bias:** {'🔴 STRONG' if jp_yld > 1.0 else '🟢 WEAK'}\n\nYield JPN {jp_yld}%. Selisih bunga dengan US menipis.")
+    st.success(f"**JPY Bias:** {'🔴 STRONG' if jp_yld > 1.0 else '🟢 WEAK'}\n\nYield JPN {jp_yld}%. Sinyal pengetatan BoJ.")
 
 if st.button("🔄 REFRESH DATA"):
     st.cache_data.clear()
