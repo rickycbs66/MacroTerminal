@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
 
+market_tickers = ["DX-Y.NYB", "GC=F", "CL=F", "^VIX"]
+
 # SETTING TERMINAL STYLE
 st.set_page_config(page_title="Macro Hedge Fund Terminal", layout="wide")
 st.markdown("""
@@ -94,7 +96,6 @@ def get_economic_calendar():
               {"Event": "FOMC Meeting", "Date": "Sesuai Jadwal Fed"}]
     return pd.DataFrame(events)
     
-market_tickers = ["DX-Y.NYB", "GC=F", "CL=F", "^VIX"]
 def process_macro():
     rows, scores = [], {"Growth": 0, "Inflation": 0, "Market Indicators": 0, "Supply": 0, "Liquidity": 0}
     already_percent = ["MARTSMPCSM44000USS", "GDPNOW", "T10Y2Y"]
@@ -144,23 +145,27 @@ def process_macro():
     return pd.DataFrame(rows, columns=["Category","Indicator","Ticker","Value","Threshold","Score"]), scores
 # DATA FETCHING
 df_macro, scores = process_macro()
-regime = "GOLDILOCKS" if scores["Growth"] > 0 and scores["Inflation"] > 0 else \
-         "OVERHEATING" if scores["Growth"] > 0 and scores["Inflation"] <= 0 else \
-         "STAGFLATION" if scores["Growth"] <= 0 and scores["Inflation"] <= 0 else "RECESSION"
+vix_row = df_macro[df_macro['Indicator']=='Volatility Index (VIX)']
+vix_val = vix_row['Value'].values[0] if not vix_row.empty else 0
+is_inflation_hot = scores["Inflation"] < 0
+is_growth_ok = scores["Growth"] > 0
 
-if vix_val > 25 or scores["Inflation"] < 0:
-    signals[regime]["USD"] = "LONG (Safe Haven)"
-
+if is_growth_ok and not is_inflation_hot:
+    regime = "GOLDILOCKS"
+elif is_growth_ok and is_inflation_hot:
+    regime = "OVERHEATING"
+elif not is_growth_ok and is_inflation_hot:
+    regime = "STAGFLATION"
+else:
+    regime = "RECESSION"
 # UI DASHBOARD
 st.title(" RICKY STRATEGIC MACRO TERMINAL")
-
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Growth Score", scores["Growth"])
-c2.metric("Inflation Score", scores["Inflation"])
-c3.metric("Macro Regime", regime)
-c4.metric("Market Sentiment", "BULLISH" if scores["Growth"] > 0 else "BEARISH")
-vix_val = df_macro[df_macro['Indicator']=='Volatility Index (VIX)']['Value'].iloc[0] if not df_macro[df_macro['Indicator']=='Volatility Index (VIX)'].empty else 0
-c5.metric("VIX Index", vix_val)
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("Growth Score", scores["Growth"])
+m2.metric("Inflation Score", scores["Inflation"])
+m3.metric("Regime", regime)
+m4.metric("Market Sentiment", "BEARISH (Risk-Off)" if vix_val > 25 else "BULLISH")
+m5.metric("VIX Index", vix_val)
 
 st.divider()
 
@@ -169,7 +174,11 @@ signals = {"GOLDILOCKS": {"EQUITY": "LONG", "GOLD": "NEUTRAL", "USD": "SHORT", "
            "OVERHEATING": {"EQUITY": "LONG", "GOLD": "LONG", "USD": "LONG", "BONDS": "SHORT"},
            "STAGFLATION": {"EQUITY": "SHORT", "GOLD": "STRONG LONG", "USD": "LONG", "BONDS": "SHORT"},
            "RECESSION": {"EQUITY": "STRONG SHORT", "GOLD": "NEUTRAL", "USD": "SHORT", "BONDS": "STRONG LONG"}}[regime]
-
+}
+current_signals = signals[regime]
+if vix_val > 25:
+    current_signals["USD"] = "LONG (Safe Haven)"
+    current_signals["EQUITY"] = "SHORT / PROTECT"
 st.subheader(" Asset Allocation Signals")
 cols = st.columns(4)
 for i, (asset, action) in enumerate(signals.items()):
