@@ -102,22 +102,24 @@ def process_macro():
     return pd.DataFrame(all_results, columns=["Region", "Indicator", "Value", "Threshold", "Status"])
 # 6. TAMPILAN DASHBOARD
 st.title(" GLOBAL FX STRATEGIC MONITOR (MARCH 2026)")
-df_results = process_macro()
+all_results = process_macro()
 
 cols = st.columns(3)
-regions = list(global_macro.keys())
+regions = list(global_macro_config.keys())
 for i, region in enumerate(regions):
     with cols[i]:
         st.markdown(f"### {region}")
-        st.table(df_results[df_results['Category'] == region][['Indicator', 'Value', 'Status']])
-
+        region_data = df_results[df_results['Category'] == region][['Indicator', 'Value', 'Status']]
+        st.table(region_data)
 # 7. BIAS FX (LOGIKA OTOMATIS BERDASARKAN DATA)
 st.divider()
 st.subheader(" Global FX Strategic Bias")
-uk_inf = df_results[df_results['Indicator']=="UK CPI Inflation YoY"]['Value'].values[0]
-eu_inf = df_results[df_results['Indicator']=="Eurozone HICP Inflation"]['Value'].values[0]
-jp_yld = df_results[df_results['Indicator']=="Japan 10Y JGB Yield"]['Value'].values[0]
-
+def get_val(indicator_name):
+    filt = df_results[df_results['Indicator'] == indicator_name]['Value']
+    return filt.values[0] if not filt.empty else 0.0
+uk_inf = get_val("UK CPI Inflation YoY")
+eu_inf = get_val("Eurozone HICP Inflation")
+jp_yld = get_val("Japan 10Y JGB Yield")
 b1, b2, b3 = st.columns(3)
 with b1:
     st.error(f"**GBP Bias:** {'🔴 HAWKISH' if uk_inf > 2.5 else '🟢 NEUTRAL'}\n\nInflasi UK {uk_inf}% (Target 2%). GBP Strong.")
