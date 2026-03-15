@@ -102,7 +102,7 @@ def process_macro():
     return pd.DataFrame(all_results, columns=["Region", "Indicator", "Value", "Threshold", "Status"])
 # 6. TAMPILAN DASHBOARD
 st.title(" GLOBAL FX STRATEGIC MONITOR (MARCH 2026)")
-all_results = process_macro()
+df_results = process_macro()
 
 cols = st.columns(3)
 regions = list(global_macro_config.keys())
