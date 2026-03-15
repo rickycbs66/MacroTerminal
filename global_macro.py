@@ -76,7 +76,7 @@ def get_macro_val_smart(ticker, name):
         
         data = fred.get_series(ticker)
         if data.empty: return 0.0
-         raw_val_tickers = [
+        raw_val_tickers = [
             "LRUNTTTTGBM156S", 
             "IRLTLT01GBM156N", 
             "DEUSNT01ATM664N", 
