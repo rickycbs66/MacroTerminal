@@ -47,9 +47,8 @@ def get_market_data(ticker):
 # MODEL INDIKATOR MAKRO
 macro_model = {
     "Growth": [
-        ["GDP Growth", "A191RL1Q225SBEA", 2.0],
-        ["Real GDP Growth YoY", "GDPC1", 2.0],        # Data Kuartalan
-        ["GDPNow (Current Q)", "GDPNOW", 2.0],       # Nowcast (Real-time)
+        ["Real GDP Growth YoY", "GDPC1", 1.5],        
+        ["GDPNow (Current Q)", "GDPNOW", 1.5],       
         ["Unemployment Rate", "UNRATE", 4.4],
         ["Retail Sales", "MARTSMPCSM44000USS", 0.3],
         ["Industrial Production", "INDPRO", 0.0],
@@ -64,18 +63,20 @@ macro_model = {
         ["CPI YoY", "CPIAUCSL", 2.0],
         ["Core CPI YoY", "CPILFESL", 2.0],
         ["PPI MoM", "PPIACO", 0.2],
-        ["Unit Labor Cost YoY", "ULCNFB", 2.0]
+        ["Unit Labor Cost YoY", "ULCNFB", 2.5]
     ],
     "Market Indicators": [
         ["US Dollar Index (DXY)", "DX-Y.NYB", 100.0],
-        ["Gold Price (Spot)", "GC=F", 5000.0]
+        ["Gold Price (Spot)", "GC=F", 5000.0],
+        ["Volatility Index (VIX)", "^VIX", 25.0],
+        ["Yield Curve (10Y-2Y)", "T10Y2Y", 0.0]
     ],
     "Liquidity": [
         ["Gov Spending Growth", "GCE", 2.0],
         ["Fiscal Deficit (Monthly)", "MTSDS133FMS", -100000.0]
     ],
     "Supply": [
-        ["Oil Price (WTI)", "CL=F", 75.0],
+        ["Oil Price (WTI)", "CL=F", 85.0],
         ["Fed Funds Rate", "FEDFUNDS", 3.5],
         ["Productivity Growth", "OPHNFB", 1.5],
         ["Capacity Utilization", "TCU", 78.0]
@@ -95,62 +96,68 @@ def get_economic_calendar():
 
 def process_macro():
     rows, scores = [], {"Growth": 0, "Inflation": 0, "Market Indicators": 0, "Supply": 0, "Liquidity": 0}
-    market_tickers = ["DX-Y.NYB", "GC=F", "CL=F"]
-    already_percent = ["MARTSMPCSM44000USS", "GDPNOW", "A191RL1Q225SBEA"]
+    market_tickers = ["DX-Y.NYB", "GC=F", "CL=F", "^VIX"]
+    already_percent = ["MARTSMPCSM44000USS", "GDPNOW", "T10Y2Y"]
 
     for category, items in macro_model.items():
         for name, ticker, threshold in items:
             df = get_market_data(ticker) if ticker in market_tickers else get_fred_series(ticker)
             if df.empty: continue
+                
             last_val = df["value"].iloc[-1]
+            
             if ticker in already_percent:
                 val = round(last_val, 2)
-
-            # Konversi otomatis ke persen jika nama mengandung MoM/YoY
             if "MoM" in name:
                 val = round(df["value"].pct_change().iloc[-1] * 100, 2)
             elif "YoY" in name or "Growth" in name:
-                freq = 4 if ticker in ["ULCNFB", "GDPC1", "OPHNFB"] else 12
+                freq = 4 if ticker in ["ULCNFB", "GDPC1", "OPHNFB", "GCE"] else 12
                 val = round(df["value"].pct_change(freq).iloc[-1] * 100, 2)  
             else:
                 val = round(last_val, 2)
-
-            # Logika Skor (Balikkan untuk Unemployment/Suku Bunga)
+                
             if pd.isna(val):
                 score = 0
                 val = 0
             else:
-                if name in ["Unemployment Rate", "Fed Funds Rate", "Fiscal Deficit (Monthly)"]:
+                bad_if_high = [
+                    "Unemployment Rate", 
+                    "Fed Funds Rate", 
+                    "Volatility Index (VIX)", 
+                    "Core PCE YoY", 
+                    "CPI YoY",
+                    "Core PCE MoM",
+                    "CPI MoM",
+                    "Core CPI MoM",
+                    "PPI MoM"
+                ]
+                bad_if_low = ["Yield Curve (10Y-2Y)", "Fiscal Deficit (Monthly)"]
+
+                if name in bad_if_high:
                     score = -1 if val > threshold else 1
+                elif name in bad_if_low:
+                    score = -1 if val < threshold else 1
                 else:
                     score = 1 if val > threshold else -1
-
             scores[category] += score
             rows.append([category, name, ticker, val, threshold, score])
-
     return pd.DataFrame(rows, columns=["Category","Indicator","Ticker","Value","Threshold","Score"]), scores
-
 # DATA FETCHING
 df_macro, scores = process_macro()
 regime = "GOLDILOCKS" if scores["Growth"] > 0 and scores["Inflation"] <= 0 else \
          "OVERHEATING" if scores["Growth"] > 0 and scores["Inflation"] > 0 else \
          "STAGFLATION" if scores["Growth"] <= 0 and scores["Inflation"] > 0 else "RECESSION"
 
-# Estimasi PCE
-cpi_yoy_row = df_macro[df_macro["Indicator"]=="CPI YoY"]
-cpi_yoy_val = cpi_yoy_row["Value"].iloc[0] if not cpi_yoy_row.empty else 0
-est_pce_val = estimate_pce_smart(cpi_yoy_val)
+# UI DASHBOARD
+st.title(" RICKY STRATEGIC MACRO TERMINAL")
 
-# BUILD UI DASHBOARD
-st.title(" MACRO TERMINAL ANALYSIS ")
-
-# METRICS
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Growth Score", scores["Growth"])
 c2.metric("Inflation Score", scores["Inflation"])
-c3.metric("Est. Next PCE", f"{est_pce_val}%")
-c4.metric("Macro Regime", regime)
-c5.metric("Market Sentiment", "BULLISH" if scores["Growth"] > 0 else "BEARISH")
+c3.metric("Macro Regime", regime)
+c4.metric("Market Sentiment", "BULLISH" if scores["Growth"] > 0 else "BEARISH")
+vix_val = df_macro[df_macro['Indicator']=='Volatility Index (VIX)']['Value'].iloc[0] if not df_macro[df_macro['Indicator']=='Volatility Index (VIX)'].empty else 0
+c5.metric("VIX Index", vix_val)
 
 st.divider()
 
@@ -168,16 +175,14 @@ for i, (asset, action) in enumerate(signals.items()):
 
 st.divider()
 
-# CALENDAR & CHART
 col_left, col_right = st.columns([1, 2])
 with col_left:
     st.subheader(" Economic Calendar")
     st.table(get_economic_calendar())
 with col_right:
-    st.subheader(" Inflation Tracking: Core CPI vs Core PCE")
+    st.subheader(" Inflation Tracking: Core CPI vs Core PCE (YoY)")
     core_cpi = (get_fred_series("CPILFESL")['value'].pct_change(12) * 100).tail(36)
     core_pce = (get_fred_series("PCEPILFE")['value'].pct_change(12) * 100).tail(36) 
-    
     fig_track = go.Figure()
     fig_track.add_trace(go.Scatter(x=core_cpi.index, y=core_cpi, name="Core CPI YoY (%)", mode='lines', line=dict(color="cyan", width=3)))
     fig_track.add_trace(go.Scatter(x=core_pce.index, y=core_pce, name="Core PCE YoY (%)", mode='lines', line=dict(color="lime", width=3)))
@@ -186,33 +191,30 @@ with col_right:
 
 st.divider()
 st.subheader(" Macro Indicators ")
-st.dataframe(df_macro, use_container_width=True)
+st.dataframe(df_macro.style.applymap(lambda x: 'color: #00FF00' if x == 1 else 'color: #FF0000' if x == -1 else '', subset=['Score']), use_container_width=True)
 
 st.divider()
-st.subheader(" Historical Indicator ")
+st.subheader(" Historical Indicator Analysis ")
 selected_name = st.selectbox("Select Indicator to Analyze:", df_macro["Indicator"])
 row_info = df_macro[df_macro["Indicator"] == selected_name].iloc[0]
 
-# Penentuan sumber data untuk grafik historis
-if row_info["Ticker"] in ["DX-Y.NYB", "GC=F", "CL=F"]:
+if row_info["Ticker"] in market_tickers:
     hist_raw = get_market_data(row_info["Ticker"])
 else:
     hist_raw = get_fred_series(row_info["Ticker"])
 
 if not hist_raw.empty:
-    if "MoM" in selected_name:
-        plot_data = (hist_raw['value'].pct_change() * 100).dropna()
-    elif "YoY" in selected_name or "Growth" in selected_name or "GDP" in selected_name:
-        plot_data = (hist_raw['value'].pct_change(12) * 100).dropna()
-    else:
-        plot_data = hist_raw['value']
-
+    plot_data = hist_raw['value']
+    if "YoY" in selected_name or "Growth" in selected_name:
+        freq = 4 if row_info["Ticker"] in ["ULCNFB", "GDPC1", "GCE"] else 12
+        plot_data = (hist_raw['value'].pct_change(freq) * 100).dropna()
+    
     fig_hist = go.Figure()
     fig_hist.add_trace(go.Scatter(x=plot_data.index, y=plot_data, name=selected_name, line=dict(color='#00FF00', width=2)))
-    fig_hist.add_hline(y=row_info["Threshold"], line_dash="dash", line_color="red", annotation_text="Threshold")
+    fig_hist.add_hline(y=row_info["Threshold"], line_dash="dash", line_color="red")
     fig_hist.update_layout(template="plotly_dark", height=450)
     st.plotly_chart(fig_hist, use_container_width=True)
 
 if st.button("🔄 Force Refresh Data"):
     st.cache_data.clear()
-    st.rerun()
+    st.rerun()                
