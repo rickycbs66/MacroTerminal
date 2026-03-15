@@ -93,10 +93,10 @@ def get_economic_calendar():
               {"Event": "PCE Price Index", "Date": "Minggu terakhir setiap bulan"},
               {"Event": "FOMC Meeting", "Date": "Sesuai Jadwal Fed"}]
     return pd.DataFrame(events)
-
+    
+market_tickers = ["DX-Y.NYB", "GC=F", "CL=F", "^VIX"]
 def process_macro():
     rows, scores = [], {"Growth": 0, "Inflation": 0, "Market Indicators": 0, "Supply": 0, "Liquidity": 0}
-    market_tickers = ["DX-Y.NYB", "GC=F", "CL=F", "^VIX"]
     already_percent = ["MARTSMPCSM44000USS", "GDPNOW", "T10Y2Y"]
 
     for category, items in macro_model.items():
