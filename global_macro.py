@@ -76,15 +76,21 @@ def get_macro_val_smart(ticker, name):
         
         data = fred.get_series(ticker)
         if data.empty: return 0.0
-        indeks_tickers = ["GBRCPIALLMINMEI", "GBRCPICOREMINMEI", "CPHPTT01EZM659N", "CLVMNACSCAB1GQEZ", "JPNCPIALLMINMEI", "JPNGDPNQDSMEI"]
-        if ticker in indeks_tickers:
+         raw_val_tickers = [
+            "LRUNTTTTGBM156S", 
+            "IRLTLT01GBM156N", 
+            "DEUSNT01ATM664N", 
+            "IRLTLT01JPM156N"  
+        ]
+        if ticker in raw_val_tickers:
+            return round(float(data.iloc[-1]), 2)    
+        if any(x in name for x in ["CPI", "Inflation", "GDP"]):
             freq = 4 if "GDP" in name else 12
-            val = (data.pct_change(freq).iloc[-1]) * 100
-            return round(float(val), 2)
-        
+            val_yoy = (data.pct_change(freq).iloc[-1]) * 100
+            return round(float(val_yoy), 2)
         return round(float(data.iloc[-1]), 2)
-    except: 
-        return 0.0
+    except:
+        return 0.0 
 
 # 6. UI DASHBOARD 
 st.title(" GLOBAL FX STRATEGIC MONITOR")
