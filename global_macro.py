@@ -29,7 +29,7 @@ def check_password():
     with col2:
         password = st.text_input("Masukkan PIN Akses:", type="password")
         if st.button("Masuk"):
-            if password == st.secrets.get("APP_PASSWORD", "8888"):
+            if password == st.secrets.get("APP_PASSWORD"):
                 st.session_state["password_correct"] = True
                 st.rerun()
             else:
@@ -68,39 +68,38 @@ global_macro = {
 }
 
 # 5. LOGIKA DATA PROCESSING 
+@st.cache_data(ttl=3600)
 def process_macro():
-    rows = []
-    raw_tickers = ["LRUNTTTTGBM156S", "IRLTLT01GBM156N", "IRLTLT01JPM156N", "DEUSNT01ATM664N"]
-    
-    for category, items in global_macro.items():
-        for name, ticker, threshold in items:
+    all_results = []
+    for region, items in global_macro_config.items():
+        for name, ticker, threshold, dtype in items:
             try:
-                if ticker.startswith("^"):
+                if dtype == "yf":
                     df = yf.download(ticker, period="5d", progress=False)
                     val = round(float(df['Close'].iloc[-1]), 2)
                 else:
                     data = fred.get_series(ticker)
-                    if data.empty: 
+                    if data.empty:
                         val = 0.0
-                    elif ticker in raw_tickers:
-                        val = round(float(data.iloc[-1]), 2)
-                    else:
-                        freq = 4 if "GDP" in name else 12
-                        val = round(float(data.pct_change(freq).iloc[-1] * 100), 2)
+                    elif dtype == "raw":
+                        val = round(float(data.dropna().iloc[-1]), 2)
+                    elif dtype == "yoy":
+                        val = round(float(data.pct_change(12).dropna().iloc[-1] * 100), 2)
+                    elif dtype == "yoy_q":
+                        val = round(float(data.pct_change(4).dropna().iloc[-1] * 100), 2)
             except:
                 val = 0.0
             
-            # Logika Status
+            # Penentuan Status
             if "CPI" in name or "Inflation" in name:
                 status = "🔴 HOT" if val > threshold else "🟢 TARGET"
             elif "Yield" in name:
                 status = "📈 HAWKISH" if val > threshold else "📉 DOVISH"
             else:
                 status = "🟢 OK" if val > threshold else "🔴 SLOW"
-                
-            rows.append([category, name, val, threshold, status])
-    return pd.DataFrame(rows, columns=["Category", "Indicator", "Value", "Threshold", "Status"])
-
+            
+            all_results.append([region, name, val, threshold, status])
+    return pd.DataFrame(all_results, columns=["Region", "Indicator", "Value", "Threshold", "Status"])
 # 6. TAMPILAN DASHBOARD
 st.title(" GLOBAL FX STRATEGIC MONITOR (MARCH 2026)")
 df_results = process_macro()
