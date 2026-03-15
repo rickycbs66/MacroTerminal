@@ -3,14 +3,16 @@ import pandas as pd
 from fredapi import Fred
 import yfinance as yf
 import plotly.graph_objects as go
+import numpy as np
 
-# 1. KONFIGURASI TAMPILAN
-st.set_page_config(page_title="Global FX Macro Terminal", layout="wide")
+# 1. SETTING STYLE TERMINAL
+st.set_page_config(page_title="Global Macro Strategic Terminal", layout="wide")
 st.markdown("""
 <style>
 .stApp { background-color: #000000; color: #00FF00; font-family: 'Courier New'; }
-.signal-box {padding:15px; border-radius:10px; border:1px solid #333; text-align:center; background:#111;}
 h1,h2,h3 {color:#00FF00 !important;}
+div[data-testid="stMetricValue"] { color: #00FF00 !important; }
+table { color: #00FF00 !important; background-color: #111 !important; border: 1px solid #333 !important; }
 input { background-color: #111 !important; color: #00FF00 !important; border: 1px solid #00FF00 !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -27,7 +29,7 @@ def check_password():
     with col2:
         password = st.text_input("Masukkan PIN Akses:", type="password")
         if st.button("Masuk"):
-            if password == st.secrets["APP_PASSWORD"]:
+            if password == st.secrets.get("APP_PASSWORD", "8888"):
                 st.session_state["password_correct"] = True
                 st.rerun()
             else:
@@ -37,19 +39,19 @@ def check_password():
 if not check_password():
     st.stop()
 
-# 3. KONEKSI API
+# 3. KONEKSI API FRED
 try:
-    FRED_API_KEY = st.secrets["FRED_API_KEY"]
+    fred = Fred(api_key=st.secrets["FRED_API_KEY"])
 except:
-    FRED_API_KEY = "15a934d9ca6efdf12dfe85a48835ce9a"
-fred = Fred(api_key=FRED_API_KEY)
+    st.error("API Key FRED tidak ditemukan di Secrets!")
+    st.stop()
 
-# 4. MODEL INDIKATOR GLOBAL (MARKET MOVERS)
-global_macro = {
+# 4. MODEL INDIKATOR GLOBAL (TICKER VALID)
+macro_model = {
     "🇬🇧 UNITED KINGDOM (GBP)": [
         ["UK CPI Inflation YoY", "GBRCPIALLMINMEI", 2.0],
         ["UK Core CPI YoY", "GBRCPICOREMINMEI", 2.0],
-        ["UK Unemployment Rate", "LRUNTTTTGBM156S", 4.2],
+        ["UK Unemployment Rate", "LRUNTTTTGBM156S", 4.4],
         ["UK 10Y Gilt Yield", "IRLTLT01GBM156N", 4.0]
     ],
     "🇪🇺 EUROZONE (EUR)": [
@@ -66,78 +68,108 @@ global_macro = {
     ]
 }
 
-# 5. FUNGSI AMBIL DATA
+# 5. FUNGSI DATA FETCHING 
 @st.cache_data(ttl=3600)
-def get_macro_val_smart(ticker, name):
+def get_fred_series(series):
     try:
-        if ticker.startswith("^"):
-            df = yf.download(ticker, period="5d", progress=False)
-            return round(float(df['Close'].iloc[-1]), 2)
-        
-        data = fred.get_series(ticker)
-        if data.empty: return 0.0
-        raw_val_tickers = [
-            "LRUNTTTTGBM156S", 
-            "IRLTLT01GBM156N", 
-            "DEUSNT01ATM664N", 
-            "IRLTLT01JPM156N"  
-        ]
-        if ticker in raw_val_tickers:
-            return round(float(data.iloc[-1]), 2)    
-        if any(x in name for x in ["CPI", "Inflation", "GDP"]):
-            freq = 4 if "GDP" in name else 12
-            val_yoy = (data.pct_change(freq).iloc[-1]) * 100
-            return round(float(val_yoy), 2)
-        return round(float(data.iloc[-1]), 2)
-    except:
-        return 0.0 
+        data = fred.get_series(series)
+        df = pd.DataFrame(data, columns=["value"])
+        return df.dropna()
+    except: return pd.DataFrame()
 
-# 6. UI DASHBOARD 
-st.title(" GLOBAL FX STRATEGIC MONITOR")
-st.subheader("BoE | ECB | BoJ: High-Impact Analysis")
+@st.cache_data(ttl=300)
+def get_market_data(ticker):
+    try:
+        data = yf.download(ticker, period="5y", interval="1d", progress=False)
+        if data.empty: return pd.DataFrame()
+        df = data['Close'][ticker].to_frame() if isinstance(data.columns, pd.MultiIndex) else data['Close'].to_frame()
+        df.columns = ['value']
+        return df.dropna()
+    except: return pd.DataFrame()
 
-cols = st.columns(3)
-regions = list(global_macro.keys())
+# 6. LOGIKA PROSES 
+def process_macro():
+    rows = []
+    market_tickers = ["^GDAXI", "^N225"]
+    already_percent = [
+        "LRUNTTTTGBM156S", "IRLTLT01GBM156N", "IRLTLT01JPM156N", "DEUSNT01ATM664N"
+    ]
 
-for i, region in enumerate(regions):
-    with cols[i]:
-        st.markdown(f"### {region}")
-        data_rows = []
-        for name, ticker, threshold in global_macro[region]:
-            val = get_macro_val_smart(ticker, name)
+    for category, items in macro_model.items():
+        for name, ticker, threshold in items:
+            # Ambil Data
+            df = get_market_data(ticker) if ticker in market_tickers else get_fred_series(ticker)
+            
+            if df.empty:
+                rows.append([category, name, 0.0, threshold, "⚪ NO DATA"])
+                continue
+            
+            last_val = df["value"].iloc[-1]
+            if ticker in already_percent:
+                # Ambil nilai mentah (Yield, Unemployment, Sentiment)
+                val = round(last_val, 2)
+            elif "YoY" in name or "Growth" in name or "Inflation" in name:
+                # Jika GDP pakai freq 4 (Kuartal), selain itu freq 12 (Bulan)
+                freq = 4 if "GDP" in name else 12
+                val = round(df["value"].pct_change(freq).iloc[-1] * 100, 2)
+            else:
+                val = round(last_val, 2)
+            
+            # Penentuan Status Visual
             if "CPI" in name or "Inflation" in name:
                 status = "🔴 HOT" if val > threshold else "🟢 TARGET"
-            elif "Sentiment" in name or "GDP" in name:
+            elif "GDP" in name or "Sentiment" in name:
                 status = "🟢 GROWTH" if val > threshold else "🔴 SLOW"
             elif "Yield" in name:
                 status = "📈 HAWKISH" if val > threshold else "📉 DOVISH"
             else:
-                status = "⚪️ MONITOR"
-            data_rows.append({"Indikator": name, "Value": val, "Status": status})
-        st.table(pd.DataFrame(data_rows))
+                status = "⚪ MONITOR"
+
+            rows.append([category, name, val, threshold, status])
+            
+    return pd.DataFrame(rows, columns=["Category", "Indicator", "Value", "Threshold", "Status"])
+
+# 7. TAMPILAN UI DASHBOARD
+st.title("🌏 GLOBAL FX STRATEGIC MONITOR")
+st.subheader("BoE | ECB | BoJ: High-Impact Analysis")
+
+df_results = process_macro()
+
+# Tampilkan per kolom wilayah
+cols = st.columns(3)
+regions = list(macro_model.keys())
+
+for i, region in enumerate(regions):
+    with cols[i]:
+        st.markdown(f"### {region}")
+        # Filter data per wilayah
+        region_df = df_results[df_results['Category'] == region][['Indicator', 'Value', 'Status']]
+        st.table(region_df)
 
 st.divider()
 
-# 7. AUTOMATIC FX BIAS (LOGIKA TRADING)
-st.subheader(" Global FX Strategic Bias")
-uk_inf = get_macro_val_smart("GBRCPIALLMINMEI", "CPI")
-eu_zew = get_macro_val_smart("DEUSNT01ATM664N", "Sentiment")
-jp_yld = get_macro_val_smart("IRLTLT01JPM156N", "Yield")
-
+# 8. FX BIAS LOGIC (Berdasarkan Nilai Aktual)
+st.subheader("💡 Global FX Strategic Bias")
 b1, b2, b3 = st.columns(3)
-with b1:
-    st.markdown("### 🇬🇧 GBP Bias")
-    if uk_inf > 3.0: st.error(f"**HAWKISH**\n\nInflasi UK Tinggi ({uk_inf}%). **GBP STRONG**")
-    else: st.success(f"**DOVISH**\n\nInflasi Melandai. **GBP WEAK**")
-with b2:
-    st.markdown("### 🇪🇺 EUR Bias")
-    if eu_zew < 0: st.error(f"**BEARISH**\n\nSentimen Jerman Buruk ({eu_zew}). **EURUSD TERTEKAN**")
-    else: st.success(f"**BULLISH**\n\nSentimen Membaik. **EUR STRONG**")
-with b3:
-    st.markdown("### 🇯🇵 JPY Bias")
-    if jp_yld > 0.8: st.error(f"**STRENGTHENING**\n\nYield JGB Naik ({jp_yld}%). **JPY STRONG**")
-    else: st.info(f"**WEAK JPY**\n\nYield Rendah. **JPY WEAK vs USD**")
 
-if st.button("🔄 REFRESH DATA"):
+# Ambil nilai krusial untuk bias
+uk_cpi = df_results[df_results['Indicator'] == "UK CPI Inflation YoY"]['Value'].values[0] if not df_results[df_results['Indicator'] == "UK CPI Inflation YoY"].empty else 0
+eu_zew = df_results[df_results['Indicator'] == "German ZEW Sentiment"]['Value'].values[0] if not df_results[df_results['Indicator'] == "German ZEW Sentiment"].empty else 0
+jp_yld = df_results[df_results['Indicator'] == "Japan 10Y JGB Yield"]['Value'].values[0] if not df_results[df_results['Indicator'] == "Japan 10Y JGB Yield"].empty else 0
+
+with b1:
+    st.info(f"**GBP Bias:** {'🔴 HAWKISH' if uk_cpi > 3.0 else '🟢 DOVISH'}")
+    st.write(f"Inflasi UK ({uk_cpi}%) tetap tinggi. GBP cenderung Strong.")
+
+with b2:
+    st.info(f"**EUR Bias:** {'🟢 BULLISH' if eu_zew > 0 else '🔴 BEARISH'}")
+    st.write(f"Sentimen ZEW ({eu_zew}) menentukan arah EUR/USD.")
+
+with b3:
+    st.info(f"**JPY Bias:** {'🔴 STRENGTHENING' if jp_yld > 0.8 else '🟢 WEAK'}")
+    st.write(f"Yield JPN ({jp_yld}%) mendekati batas kritis BoJ.")
+
+if st.button("🔄 REFRESH GLOBAL DATA"):
     st.cache_data.clear()
     st.rerun()
+
