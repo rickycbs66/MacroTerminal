@@ -144,9 +144,12 @@ def process_macro():
     return pd.DataFrame(rows, columns=["Category","Indicator","Ticker","Value","Threshold","Score"]), scores
 # DATA FETCHING
 df_macro, scores = process_macro()
-regime = "GOLDILOCKS" if scores["Growth"] > 0 and scores["Inflation"] <= 0 else \
-         "OVERHEATING" if scores["Growth"] > 0 and scores["Inflation"] > 0 else \
-         "STAGFLATION" if scores["Growth"] <= 0 and scores["Inflation"] > 0 else "RECESSION"
+regime = "GOLDILOCKS" if scores["Growth"] > 0 and scores["Inflation"] > 0 else \
+         "OVERHEATING" if scores["Growth"] > 0 and scores["Inflation"] <= 0 else \
+         "STAGFLATION" if scores["Growth"] <= 0 and scores["Inflation"] <= 0 else "RECESSION"
+
+if vix_val > 25 or scores["Inflation"] < 0:
+    signals[regime]["USD"] = "LONG (Safe Haven)"
 
 # UI DASHBOARD
 st.title(" RICKY STRATEGIC MACRO TERMINAL")
