@@ -18,9 +18,30 @@ div[data-testid="stMetricValue"] { color: #00FF00 !important; }
 h1,h2,h3 {color:#00FF00 !important;}
 </style>
 """, unsafe_allow_html=True)
+def check_password():
+    if "password_correct" not in st.session_state:
+        st.session_state["password_correct"] = False
+    if st.session_state["password_correct"]:
+        return True
 
-# KONEKSI API
-FRED_API_KEY = "15a934d9ca6efdf12dfe85a48835ce9a"
+    st.markdown("<h2 style='text-align: center;'>🔐 RICKY MACRO TERMINAL LOGIN</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        password = st.text_input("Masukkan PIN Akses:", type="password")
+        if st.button("Masuk"):
+            if password == st.secrets["APP_PASSWORD"]:
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("PIN Salah! Akses Ditolak.")
+    return False
+
+if not check_password():
+    st.stop()
+try:
+    FRED_API_KEY = st.secrets["FRED_API_KEY"]
+except:
+    FRED_API_KEY = "15a934d9ca6efdf12dfe85a48835ce9a"
 fred = Fred(api_key=FRED_API_KEY)
 
 @st.cache_data(ttl=3600)
