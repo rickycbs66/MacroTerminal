@@ -68,16 +68,26 @@ global_macro = {
 
 # 5. FUNGSI AMBIL DATA
 @st.cache_data(ttl=3600)
-def get_macro_val(ticker):
+def get_macro_val_smart(ticker, name):
     try:
         if ticker.startswith("^"):
-            return yf.download(ticker, period="1d", progress=False)['Close'].iloc[-1]
+            df = yf.download(ticker, period="5d", progress=False)
+            return round(float(df['Close'].iloc[-1]), 2)
+        
         data = fred.get_series(ticker)
-        return data.iloc[-1]
-    except: return 0
+        if data.empty: return 0.0
+        
+        if any(x in name for x in ["CPI", "Inflation", "GDP", "Unemployment"]):
+            freq = 4 if "GDP" in name else 12
+            val = (data.pct_change(freq).iloc[-1]) * 100
+            return round(float(val), 2)
+        
+        return round(float(data.iloc[-1]), 2)
+    except: 
+        return 0.0
 
 # 6. UI DASHBOARD UTAMA
-st.title("🌏 GLOBAL FX STRATEGIC MONITOR")
+st.title(" GLOBAL FX STRATEGIC MONITOR")
 st.subheader("BoE | ECB | BoJ: High-Impact Analysis")
 
 cols = st.columns(3)
@@ -88,7 +98,7 @@ for i, region in enumerate(regions):
         st.markdown(f"### {region}")
         data_rows = []
         for name, ticker, threshold in global_macro[region]:
-            val = get_macro_val(ticker)
+            val = get_macro_val(ticker, name)
             if "CPI" in name or "Inflation" in name:
                 status = "🔴 HOT" if val > threshold else "🟢 TARGET"
             elif "Sentiment" in name or "GDP" in name:
@@ -97,37 +107,31 @@ for i, region in enumerate(regions):
                 status = "📈 HAWKISH" if val > threshold else "📉 DOVISH"
             else:
                 status = "⚪️ MONITOR"
-            data_rows.append({"Indikator": name, "Value": round(val, 2), "Status": status})
+            data_rows.append({"Indikator": name, "Value": val, "Status": status})
         st.table(pd.DataFrame(data_rows))
 
 st.divider()
 
 # 7. AUTOMATIC FX BIAS (LOGIKA TRADING)
-st.subheader("💡 Global FX Strategic Bias (Data-Driven)")
-uk_cpi = get_macro_val("GBRCPIALLMINMEI")
-eu_zew = get_macro_val("DEUSNT01ATM664N")
-jp_yield = get_macro_val("IRLTLT01JPM156N")
+st.subheader(" Global FX Strategic Bias")
+uk_inf = get_macro_val_smart("GBRCPIALLMINMEI", "CPI")
+eu_zew = get_macro_val_smart("DEUSNT01ATM664N", "Sentiment")
+jp_yld = get_macro_val_smart("IRLTLT01JPM156N", "Yield")
 
 b1, b2, b3 = st.columns(3)
 with b1:
     st.markdown("### 🇬🇧 GBP Bias")
-    if uk_cpi > 3.0:
-        st.error(f"**STANCE: HAWKISH**\n\nInflasi UK tinggi ({uk_cpi:.2f}%). BoE cenderung menahan bunga tinggi. **GBP STRONG**.")
-    else:
-        st.success("**STANCE: DOVISH**\n\nInflasi melandai. GBP berisiko melemah.")
+    if uk_inf > 3.0: st.error(f"**HAWKISH**\n\nInflasi UK Tinggi ({uk_inf}%). **GBP STRONG**")
+    else: st.success(f"**DOVISH**\n\nInflasi Melandai. **GBP WEAK**")
 with b2:
     st.markdown("### 🇪🇺 EUR Bias")
-    if eu_zew < 0:
-        st.error(f"**STANCE: BEARISH**\n\nSentimen Jerman Negatif ({eu_zew:.2f}). Ekonomi EU lesu. **EUR/USD TERTEKAN**.")
-    else:
-        st.success("**STANCE: BULLISH**\n\nSentimen membaik. EUR berpotensi menguat.")
+    if eu_zew < 0: st.error(f"**BEARISH**\n\nSentimen Jerman Buruk ({eu_zew}). **EURUSD TERTEKAN**")
+    else: st.success(f"**BULLISH**\n\nSentimen Membaik. **EUR STRONG**")
 with b3:
     st.markdown("### 🇯🇵 JPY Bias")
-    if jp_yield > 0.8:
-        st.error(f"**STANCE: STRENGTHENING**\n\nYield JGB naik ({jp_yield:.2f}%). BoJ mendekati kebijakan ketat. **JPY STRONG**.")
-    else:
-        st.info("**STANCE: WEAK JPY**\n\nYield rendah. JPY tetap lemah terhadap USD.")
+    if jp_yld > 0.8: st.error(f"**STRENGTHENING**\n\nYield JGB Naik ({jp_yld}%). **JPY STRONG**")
+    else: st.info(f"**WEAK JPY**\n\nYield Rendah. **JPY WEAK vs USD**")
 
-if st.button("🔄 REFRESH GLOBAL DATA"):
+if st.button("🔄 REFRESH DATA"):
     st.cache_data.clear()
     st.rerun()
