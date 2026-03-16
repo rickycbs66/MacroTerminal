@@ -1,3 +1,4 @@
+%%writefile global_macro.py
 import streamlit as st
 import pandas as pd
 import requests
@@ -20,20 +21,21 @@ try:
     JAPAN_APP_ID = st.secrets["ESTAT_API_KEY"]
 except:
     JAPAN_APP_ID = "cf3e53ebb23656d51ee03e9af9f696163b5b4c16"
+    st.warning("E-Stat API Key not found in st.secrets. Using default key, which may not work.")
 
 # 2. SISTEM KEAMANAN PIN
 def check_password():
-    if st.session_state.get("password_correct", False): 
+    if st.session_state.get("password_correct", False):
         return True
     st.markdown("<h2 style='text-align: center;'>🔐 GLOBAL MACRO LOGIN</h2>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         password = st.text_input("Masukkan PIN Akses:", type="password")
         if st.button("Masuk"):
-            if password == "1234": 
+            if password == "1234":
                 st.session_state["password_correct"] = True
                 st.rerun()
-            else: 
+            else:
                 st.error("PIN Salah!")
     return False
 if not check_password():
@@ -47,7 +49,8 @@ def fetch_uk_ons(series_id):
         res = requests.get(url, timeout=15).json()
         latest = res["months"][-1]
         return float(latest["value"]), latest["date"]
-    except:
+    except Exception as e:
+        print(f"Error fetching UK ONS data for {series_id}: {e}")
         return 0.0, "ERR"
 
 @st.cache_data(ttl=3600)
@@ -55,10 +58,15 @@ def fetch_eurostat(code, unit):
     url = f"https://ec.europa.eu/eurostat/api/discover/v2/tgm/table?table={code}"
     try:
         res = requests.get(url, timeout=10).json()
+        # Handle cases where value might be empty or missing
+        if not res.get("value"):
+            print(f"Eurostat value not found for {code}")
+            return 0.0, "ERR"
         value = list(res["value"].values())[0]
         time_key = list(res["dimension"]["time"]["category"]["label"].values())[0]
         return float(value), time_key
-    except:
+    except Exception as e:
+        print(f"Error fetching Eurostat data for {code}: {e}")
         return 0.0, "ERR"
 
 @st.cache_data(ttl=3600)
@@ -66,6 +74,11 @@ def fetch_japan_estat(stats_id):
     url = f"https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData?appId={JAPAN_APP_ID}&statsDataId={stats_id}&limit=1"
     try:
         res = requests.get(url, timeout=15).json()
+        # Check for data existence before accessing
+        if not res.get("GET_STATS_DATA") or not res["GET_STATS_DATA"].get("STATISTICAL_DATA") or not res["GET_STATS_DATA"]["STATISTICAL_DATA"].get("DATA_INF"):
+            print(f"Japan E-Stat data structure invalid or empty for {stats_id}")
+            return 0.0, "ERR"
+
         data_inf = res["GET_STATS_DATA"]["STATISTICAL_DATA"]["DATA_INF"]["VALUE"]
         if isinstance(data_inf, list):
             val = data_inf[0]["$"]
@@ -74,15 +87,21 @@ def fetch_japan_estat(stats_id):
             val = data_inf["$"]
             date = data_inf["@time"]
         return float(val), date
-    except:
+    except Exception as e:
+        print(f"Error fetching Japan E-Stat data for {stats_id}: {e}")
         return 0.0, "ERR"
 
 def fetch_market(ticker):
     try:
         data = yf.Ticker(ticker)
-        val = data.fast_info["last_price"]
+        # Use info.get to safely access keys that might not exist
+        val = data.fast_info.get("last_price")
+        if val is None:
+            print(f"Could not get last_price for ticker {ticker}")
+            return 0.0, "ERR"
         return float(val), "Live"
-    except:
+    except Exception as e:
+        print(f"Error fetching market data for {ticker}: {e}")
         return 0.0, "ERR"
 
 # DASHBOARD
@@ -153,7 +172,7 @@ with c3:
     st.header("🇯🇵 JAPAN (JPY)")
     jp_metrics = [
 
-        ["Japan Core CPI MoM", "0003423127", 0.1, "estat"], 
+        ["Japan Core CPI MoM", "0003423127", 0.1, "estat"],
         ["Japan Unemp Rate", "0003008544", 2.5, "estat"],
         ["Japan Household Spend", "0003017234", 1.0, "estat"],
         ["Japan Industrial Prod", "0003076161", 0.0, "estat"],
@@ -185,5 +204,4 @@ st.info("Monitor Terintegrasi: GBP, EUR, JPY. Refresh untuk data terbaru.")
 if st.button("🔄 REFRESH ALL DATA"):
     st.cache_data.clear()
     st.rerun()
-
 
