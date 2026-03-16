@@ -138,8 +138,8 @@ with c3:
     for m in jp_metrics:
         val, dt = fetch_japan_estat(m[1]) if m[3] == "estat" else fetch_market(m[1])
         status = "📈 HAWKISH" if val > m[2] else "📉 DOVISH"
-        jp_res.append({"Indicator": name, "Val": val, "Status": status, "Date": dt})
-    st.table(pd.DataFrame(jp_res))
+        res_jp.append({"Indicator": name, "Val": val, "Status": status, "Date": dt})
+    st.table(pd.DataFrame(res_jp))
 
 st.divider()
 st.subheader("💡 Global FX Strategic Bias")
