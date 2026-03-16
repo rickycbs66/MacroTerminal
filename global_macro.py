@@ -4,8 +4,7 @@ import requests
 import yfinance as yf
 from datetime import datetime
 
-st.set_page_config(page_title="Global Macro Strategic Terminal", layout="wide")
-JAPAN_APP_ID = "cf3e53ebb23656d51ee03e9af9f696163b5b4c16"
+
 # 1. KONFIGURASI TAMPILAN (Cyberpunk Style)
 st.set_page_config(page_title="Global Macro Terminal v2", layout="wide")
 st.markdown("""
@@ -16,7 +15,11 @@ h1, h2, h3 { color: #00FF00 !important; border-bottom: 1px solid #00FF00; }
 div[data-testid="stMetricValue"] { color: #00FF00 !important; }
 </style>
 """, unsafe_allow_html=True)
-
+st.set_page_config(page_title="Global Macro Strategic Terminal", layout="wide")
+try:
+    JAPAN_APP_ID = st.secrets["ESTAT_API_KEY"]
+except:
+    JAPAN_APP_ID = "cf3e53ebb23656d51ee03e9af9f696163b5b4c16"
 # 2. SISTEM KEAMANAN PIN
 def check_password():
     if st.session_state.get("password_correct", False): return True
@@ -37,7 +40,6 @@ if not check_password(): st.stop()
 
 @st.cache_data(ttl=3600)
 def fetch_uk_ons(series_id):
-    """Ambil data ONS UK (CPI, GDP, Retail, Wage, Ind. Prod)"""
     url = f"https://ons.gov.uk{series_id}/dataset/mm23/data"
     try:
         res = requests.get(url, timeout=15).json()
@@ -46,36 +48,34 @@ def fetch_uk_ons(series_id):
     except: return 0.0, "ERR"
 
 @st.cache_data(ttl=3600)
-def fetch_eurostat(code, unit="PC4_ANY"):
-    """Eurostat: unit=PC4_ANY (YoY), unit=PCH_PRE (MoM), unit=CLV_PCH_PRE (QoQ)"""
+def fetch_eurostat(code, unit):
     url = f"https://europa.eu{code}?geo=EA20&lastTimePeriod=1&unit={unit}"
     try:
-        res = requests.get(url, timeout=15).json()
+        res = requests.get(url, timeout=10).json()
         val = list(res['value'].values())[0]
-        time = list(res['dimension']['time']['category']['label'].values())[0]
-        return float(val), time
+        time_key = list(res['dimension']['time']['category']['label'].values())[0]
+        return float(val), time_key
     except: return 0.0, "ERR"
 
 @st.cache_data(ttl=3600)
 def fetch_japan_estat(stats_id):
-    """e-Stat Japan (CPI, Unemp, Household, Industrial Prod)"""
     url = f"https://e-stat.go.jp{JAPAN_APP_ID}&statsDataId={stats_id}&limit=1"
     try:
         res = requests.get(url, timeout=15).json()
         data_inf = res['GET_STATS_DATA']['STATISTICAL_DATA']['DATA_INF']['VALUE']
         val = data_inf['$'] if isinstance(data_inf, dict) else data_inf[0]['$']
-        time = data_inf['@time'] if isinstance(data_inf, dict) else data_inf[0]['@time']
-        return float(val), time
+        date = v_item['@time'] if isinstance(v_item, dict) else v_item[0]['@time']
+        return float(val), date
     except: return 0.0, "ERR"
 
 def fetch_market(ticker):
-    """Data Yield & Index via Yahoo Finance"""
     try:
-        data = yf.Ticker(ticker).fast_info['last_price']
-        return float(data), "Live"
+        data = yf.Ticker(ticker)
+        val = data.fast_info['last_price']
+        return float(val), "Live"
     except: return 0.0, "ERR"
 
-# --- MAIN ENGINE ---
+# DASBOARD
 st.title(" GLOBAL FX STRATEGIC MONITOR ")
 
 c1, c2, c3 = st.columns(3)
@@ -125,7 +125,7 @@ with c2:
 with c3:
     st.header("🇯🇵 JAPAN (JPY)")
     jp_metrics = [
-        ["Japan Core CPI MoM", "0003423127", 0.1, "estat"], # ID misal
+        ["Japan Core CPI MoM", "0003423127", 0.1, "estat"], 
         ["Japan Unemp Rate", "0003008544", 2.5, "estat"],
         ["Japan Household Spend", "0003017234", 1.0, "estat"],
         ["Japan Industrial Prod", "0003076161", 0.0, "estat"],
@@ -138,8 +138,8 @@ with c3:
     for m in jp_metrics:
         val, dt = fetch_japan_estat(m[1]) if m[3] == "estat" else fetch_market(m[1])
         status = "📈 HAWKISH" if val > m[2] else "📉 DOVISH"
-        res_jp.append({"Indicator": m[0], "Val": val, "Status": status, "Date": dt})
-    st.table(pd.DataFrame(res_jp))
+        jp_res.append({"Indicator": name, "Val": val, "Status": status, "Date": dt})
+    st.table(pd.DataFrame(jp_res))
 
 st.divider()
 st.subheader("💡 Global FX Strategic Bias")
