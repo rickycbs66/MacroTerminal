@@ -84,8 +84,8 @@ macro_model = {
         ["Core PCE MoM", "PCEPILFE", 0.2],
         ["CPI MoM", "CPIAUCSL", 0.2],
         ["Core CPI MoM", "CPILFESL", 0.2],
-        ["CPI YoY", "CPIAUCSL", 2.0],
-        ["Core CPI YoY", "CPILFESL", 2.0],
+        ["CPI YoY", "CPIAUCNS", 2.0],
+        ["Core CPI YoY", "CPILFENS", 2.0],
         ["PPI MoM", "PPIACO", 0.2],
         ["Unit Labor Cost YoY", "ULCNFB", 2.5]
     ],
