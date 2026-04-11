@@ -1,7 +1,8 @@
-streamlit
-pandas
-fredapi
-yfinance
 plotly
 pandas-datareader
 numpy
+streamlit
+pandas>=2.1.0
+fredapi
+yfinance
+plotly
